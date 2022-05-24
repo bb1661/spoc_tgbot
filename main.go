@@ -20,15 +20,16 @@ import (
 )
 
 var (
-	query      string
-	m          BaseMsg
-	mHead      BaseMsg2
-	botMessage BotMessage
-	startID    int
-	offset     int
-	logged     int
-	timeSynh   time.Time
-	userex     userExists
+	query        string
+	m            BaseMsg
+	mHead        BaseMsg2
+	botMessage   BotMessage
+	startID      int
+	offset       int
+	logged       int
+	timeSynh     time.Time
+	userex       userExists
+	emailProfile int
 )
 
 func main() {
@@ -186,6 +187,61 @@ func main() {
 					if err != nil {
 						log.Fatal(err)
 						fmt.Scanf("")
+					}
+					query = fmt.Sprintf(`SELECT CASE WHEN EXISTS (SELECT TOP 1 [id]
+						from [zaprosi].[dbo].[profile] where  [zaprosi].[dbo].[profile].email = (select top 1 email
+						FROM [zaprosi].[dbo].[tgbot] where chatid=%d)) THEN '1'ELSE '0' END`, update.Message.Chat.ChatId)
+					fmt.Println(query)
+
+					rows, err := db.Query(query)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
+					if rows != nil {
+						for rows.Next() {
+							//fmt.Println("nexter")
+
+							if err := rows.Scan(&emailProfile); err != nil {
+								log.Panic(err)
+								fmt.Scanf(" ")
+							}
+						}
+					}
+
+					if emailProfile == 1 {
+						err = sendMessage(botUrl, "Отлично, осталось только ввести пин, который я прислал тебе на почту.", update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+						emailText := fmt.Sprintf(`<td id=topText><b>Получение PIN</b></td></tr>
+						</table></td></tr><tr><td><h3>Здравствуйте!</h3><p>Для вашей учетной записи был сгенерирован PIN: <div id=samtext style=padding:15px;font-size:40px;text-align:center;letter-spacing:5px;font-weight:500;>%d</div></p><br><br><br><br><br><br><br></td></tr>
+						</table>
+				 </BODY></HTML>`, pin)
+						//err := sendEmail(update.Message.Text, "", "Telegram PIN", emailText)
+						zapr := fmt.Sprintf(`INSERT INTO [dbo].[sendemail]
+							([komu]
+							,[kopiya]
+							,[tema]
+							,[telopisma])
+						VALUES
+							('%s;',null,N'%s',N'%s')`, update.Message.Text, "Telegram PIN", emailText)
+						fmt.Println(zapr)
+
+						_, err = db.Exec(zapr)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf(" ")
+						}
+
+					} else {
+						err = sendMessage(botUrl, "Такой email не зарегистрирован на споке. Попробуйте проверить корректность введения и отправить его заново.", update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+
 					}
 
 				case len(update.Message.Text) == 4:
@@ -404,4 +460,50 @@ func getUpdates(botUrl string, offset int) ([]Update, error) {
 func valid(email string) bool {
 	_, err := mail.ParseAddress(email)
 	return err == nil
+}
+
+func sendEmail(komu string, kopiya string, tema string, telopisma string) error {
+	textfile, err := ioutil.ReadFile("config.yml")
+	if err != nil {
+		return err
+	}
+	config := Config{}
+	err = yaml.Unmarshal([]byte(textfile), &config)
+	if err != nil {
+		return err
+	}
+	conString := fmt.Sprintf("user id=%s;password=%s;port=%d;database=%s", config.Db.User, config.Db.Password, config.Db.Port, config.Db.Database)
+	db1, err := sql.Open("mssql", conString)
+	if err != nil {
+		return err
+	}
+	zapr := fmt.Sprintf(`INSERT INTO [dbo].[sendemail]
+		([komu]
+		,[kopiya]
+		,[tema]
+		,[telopisma])
+ 	 VALUES
+		(%s,%s,%s,%s) GO`, komu, kopiya, tema, telopisma)
+
+	_, err = db1.Exec(zapr)
+	if err != nil {
+		return err
+	}
+
+	/*
+		SELECT TOP (1000) [id]
+		,[komu]
+		,[kopiya]
+		,[tema]
+		,[telopisma]
+		,[datesend]
+		,[sendWhen]
+		,[category]
+		,[lastMess]
+		,[SendingInf]
+		,[numFromperep]
+		,[fileInput]
+		FROM [zaprosi].[dbo].[sendemail]
+	*/
+	return nil
 }
