@@ -24,17 +24,24 @@ type BotMessage struct {
 }
 
 type BaseMsg struct {
-	id       int
-	login    string
-	name     string
-	secname  string
-	whom     string
-	who      string
-	nproject int
-	message  string
-	naprav   string
-	mainid   string
-	chat     int
+	id        int
+	login     string
+	name      string
+	secname   string
+	whom      string
+	who       string
+	nproject  int
+	message   string
+	naprav    string
+	mainid    string
+	zakazchik string
+	otdel     string
+	dolzhn    string
+	chat      int
+	hb        int
+	he        int
+	mb        int
+	me        int
 }
 
 type BaseMsg2 struct {

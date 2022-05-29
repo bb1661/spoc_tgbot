@@ -10,13 +10,15 @@ import (
 	"math/rand"
 	"net/http"
 	"net/mail"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	yaml "gopkg.in/yaml.v3"
 
 	_ "github.com/denisenkom/go-mssqldb"
-	strip "github.com/grokify/html-strip-tags-go" // => strip
+	"github.com/microcosm-cc/bluemonday" // => strip
 )
 
 var (
@@ -30,10 +32,15 @@ var (
 	timeSynh     time.Time
 	userex       userExists
 	emailProfile int
+	chatPatch    int
+	hb           = 9
+	mb           = 45
+	he           = 18
+	me           = 45
 )
 
 func main() {
-	startID = 425740
+
 	textfile, err := ioutil.ReadFile("config.yml")
 	if err != nil {
 		log.Fatalf("error: %v", err)
@@ -114,7 +121,10 @@ func main() {
 			fmt.Println(userex.userexisis)
 
 			if userex.userexisis == 0 {
-				zapr := fmt.Sprintf("INSERT INTO [dbo].[tgbot] ([email],[chatid],[pin],[loginned]) VALUES (null,%d,null,%d)", update.Message.Chat.ChatId, 0)
+				zapr := fmt.Sprintf(`INSERT INTO [dbo].[tgbot] ([email],[chatid],[pin],[loginned],active,[hour_begin]
+					,[hour_end]
+					,[minute_begin]
+					,[minute_end]) VALUES (null,%d,null,%d,1,9,18,45,45)`, update.Message.Chat.ChatId, 0)
 				_, err = db.Exec(zapr)
 				if err != nil {
 					log.Fatal(err)
@@ -149,6 +159,41 @@ func main() {
 				logged = 0
 			}
 
+			if strings.HasPrefix(update.Message.Text, "Оповещение") && (update.Message.Chat.ChatId == 261609763 || update.Message.Chat.ChatId == 319080225) {
+				msg := strings.ReplaceAll(update.Message.Text, "Оповещение", "")
+				query = `SELECT
+				[chatid]
+			 FROM [zaprosi].[dbo].[tgbot]  where active =1`
+				rows, err = db.Query(query)
+				if err != nil {
+					log.Fatal(err)
+					fmt.Scanf("")
+				}
+				if rows != nil {
+					for rows.Next() {
+						//fmt.Println("nexter")
+
+						if err := rows.Scan(&chatPatch); err != nil {
+							log.Panic(err)
+							fmt.Scanf("")
+						}
+						err = sendMessage(botUrl, msg, chatPatch)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+						err = sendMessage(botUrl, "Оповещение отправлено", update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+					}
+				} else {
+					logged = 0
+				}
+
+			}
+
 			if logged == 1 {
 				switch {
 				case update.Message.Text == "heyo":
@@ -157,8 +202,92 @@ func main() {
 						log.Fatal(err)
 						fmt.Scanf("")
 					}
+
+				case (strings.HasPrefix(update.Message.Text, "Начало") || strings.HasPrefix(update.Message.Text, "начало")):
+					re := regexp.MustCompile("[0-9]+")
+					a := re.FindAllString(update.Message.Text, -1)
+					t1, _ := strconv.Atoi(a[0])
+					t2, _ := strconv.Atoi(a[1])
+					if t1 >= 0 && t1 <= 23 && t2 <= 59 && t2 >= 0 {
+						zapr := fmt.Sprintf("update [dbo].[tgbot] set [hour_begin] = %d,[minute_begin] = %d  where chatid=%d", t1, t2, update.Message.Chat.ChatId)
+						_, err = db.Exec(zapr)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+						msg := fmt.Sprintf("Время начала работы установлено на %d:%d", t1, t2)
+						err = sendMessage(botUrl, msg, update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+					} else {
+
+						err = sendMessage(botUrl, "Неправильный формат даты. Дата конца работы не изменена.", update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+					}
+
+				case (strings.HasPrefix(update.Message.Text, "Конец") || strings.HasPrefix(update.Message.Text, "конец")):
+					re := regexp.MustCompile("[0-9]+")
+					a := re.FindAllString(update.Message.Text, -1)
+					t1, _ := strconv.Atoi(a[0])
+					t2, _ := strconv.Atoi(a[1])
+					if t1 >= 0 && t1 <= 23 && t2 <= 59 && t2 >= 0 {
+						zapr := fmt.Sprintf("update [dbo].[tgbot] set [hour_end] = %d,[minute_end] = %d  where chatid=%d", t1, t2, update.Message.Chat.ChatId)
+						_, err = db.Exec(zapr)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+						msg := fmt.Sprintf("Время конца работы установлено на %d:%d", t1, t2)
+						err = sendMessage(botUrl, msg, update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+					} else {
+
+						err = sendMessage(botUrl, "Неправильный формат даты. Дата конца работы не изменена.", update.Message.Chat.ChatId)
+						if err != nil {
+							log.Fatal(err)
+							fmt.Scanf("")
+						}
+					}
+
+				case (strings.HasPrefix(update.Message.Text, "Включить") || strings.HasPrefix(update.Message.Text, "включить")):
+					zapr := fmt.Sprintf("update [dbo].[tgbot] set active = 1  where chatid=%d", update.Message.Chat.ChatId)
+					_, err = db.Exec(zapr)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
+					err = sendMessage(botUrl, "Оповещения включены. Приятного пользования!", update.Message.Chat.ChatId)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
+				case (strings.HasPrefix(update.Message.Text, "Выключить") || strings.HasPrefix(update.Message.Text, "выключить")):
+					zapr := fmt.Sprintf("update [dbo].[tgbot] set active = 0  where chatid=%d", update.Message.Chat.ChatId)
+					_, err = db.Exec(zapr)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
+					err = sendMessage(botUrl, "Оповещения выключены. \nВозвращайтесь! :)", update.Message.Chat.ChatId)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
 				default:
-					err = sendMessage(botUrl, "Пока команды не доступны. Но скоро будут!", update.Message.Chat.ChatId)
+					err = sendMessage(botUrl, `Доступные на данный момент команды:
+					Выключить - отключить оповещения
+					Включить - включить оповещения
+					Начало - Установить время начала отправки оповещения. По умолчанию 9.45. Пример команды: "Начало 8.30"
+					Конец - Установить время начала отправки оповещения. По умолчанию 18.45. Пример команды: "Конец  21.15"
+					`, update.Message.Chat.ChatId)
 					if err != nil {
 						log.Fatal(err)
 						fmt.Scanf("")
@@ -174,6 +303,13 @@ func main() {
 					Я - телеграм-бот для работы с порталом SPOC! 
 					Пока что я умею оповещать тебя о сообщениях, которые направляют тебе твои коллеги. Скоро я смогу оповещать тебя о новых кейсах, поступивших в работу, через меня можно будет отвечать напрямую в переписку, я научусь настраиваться под твои нужды, и еще очень-очень многое.
 					Для регистрации просто введи свой корпоративный email.
+
+					Доступные на данный момент команды:
+					Выключить - отключить оповещения
+					Включить - включить оповещения
+					Начало - Установить время начала отправки оповещения. По умолчанию 9.45. Пример команды: "Начало 8.30"
+					Конец - Установить время начала отправки оповещения. По умолчанию 18.45. Пример команды: "Конец  21.15"
+
 					Если у тебя возникла какая-то проблема со мной, или же хочется предлжить что-то для доработки - обращайся к soreshnikov@dtln.ru/ @ro_anae`, update.Message.Chat.ChatId)
 					if err != nil {
 						log.Fatal(err)
@@ -315,7 +451,21 @@ func main() {
 		}
 		fmt.Println(updates)
 
-		query = fmt.Sprintf("With asd AS(SELECT [komyt],[datewhen],[nid],[mainid],[nproject],[valid] FROM [zaprosi].[dbo].[komy_table]),prichit AS (SELECT [dateprochit],[whoClick],[idN],[nproj] FROM [zaprosi].[dbo].[prochit_table]),usery AS (SELECT [shnam],[name],[secnam],[about],[phone],[email],[pozic],[dolzn],[pic],[groupa],[uwelSotr] FROM [zaprosi].[dbo].[profile])SELECT TOP (1000) [perepiska].[id],[shnam],[name],[secnam],[komyt],[kto],[perepiska].[nproject],[message],ISNULL([naprav],'main') AS naprav,[mainid], (select chatid from [zaprosi].[dbo].[tgbot] where email = komyt ) as chat FROM [zaprosi].[dbo].[perepiska]INNER JOIN asd ON [nid] = [id]INNER JOIN [profile] ON [email] = [komyt] WHERE komyt in (SELECT[email] FROM [zaprosi].[dbo].[tgbot] where loginned = 1) and [perepiska].id>%d order by id desc", startID)
+		query = fmt.Sprintf(`With asd AS(SELECT [komyt],[datewhen],[nid],[mainid],[nproject],[valid]
+				FROM [zaprosi].[dbo].[komy_table])
+				,prichit AS (SELECT [dateprochit],[whoClick],[idN],[nproj] FROM [zaprosi].[dbo].[prochit_table]),
+				usery AS (SELECT [shnam],[name],[secnam],[about],[phone],[email],[pozic],[dolzn],[pic],[groupa],[uwelSotr]
+				FROM [zaprosi].[dbo].[profile])
+				SELECT TOP (1000) [perepiska].[id],[shnam],[name],[secnam],[komyt],[kto],[perepiska].[nproject],[message] , ISNULL([naprav],'main') AS naprav,[mainid],
+				(select top 1 zakazchik from [zaprosi].[dbo].[zapr] where zapr.main_id= asd.mainid) as zakaz  , 
+				 (SELECT TOP 1 [otdel] FROM [zaprosi].[dbo].[tgbot] where tgbot.email=komyt) as otdel,
+				 (SELECT TOP 1 [dolzhn] FROM [zaprosi].[dbo].[tgbot] where tgbot.email=komyt) as dolzhn,
+				(select chatid from [zaprosi].[dbo].[tgbot] where email = komyt ) as chat FROM [zaprosi].[dbo].[perepiska] INNER JOIN asd ON [nid] = [id] INNER JOIN [profile] 
+				ON [email] = [komyt] WHERE komyt in (SELECT [email] FROM [zaprosi].[dbo].[tgbot]  where loginned = 1
+				 and active = 1 and ((DATEPART(HOUR, GETDATE())>=hour_begin and DATEPART(HOUR, GETDATE())<=hour_end) or (DATEPART(HOUR, GETDATE())=hour_begin and DATEPART(MINUTE, GETDATE())>=MINUTE_begin))
+				 or (DATEPART(HOUR, GETDATE())=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end))
+				 --and DATEPART(HOUR, GETDATE())<=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end)
+				  and [perepiska].id>%d order by id  `, startID)
 		fmt.Println(query)
 
 		rows, err = db.Query(query)
@@ -326,15 +476,15 @@ func main() {
 
 		for rows.Next() {
 
-			if err := rows.Scan(&m.id, &m.login, &m.name, &m.secname, &m.whom, &m.who, &m.nproject, &m.message, &m.naprav, &m.mainid, &m.chat); err != nil {
+			if err := rows.Scan(&m.id, &m.login, &m.name, &m.secname, &m.whom, &m.who, &m.nproject, &m.message, &m.naprav, &m.mainid, &m.zakazchik, &m.otdel, &m.dolzhn, &m.chat); err != nil {
 				log.Panic(err)
 				fmt.Scanf(" ")
 			}
 
 			fmt.Println(m.message)
 
-			msg := fmt.Sprintf("Номер запроса: %d \n Отправитель: %s \n Сообщение: \n %s", m.nproject, m.who, m.message)
-			msg = strip.StripTags(msg)
+			msg := fmt.Sprintf("Номер запроса: %d\nЗаказчик:%s\nhttps://spoc?idN=%d \nОтправитель: %s \n\nСообщение: \n %s", m.nproject, m.zakazchik, m.nproject, m.who, m.message)
+			msg = cleartags(msg)
 			err := sendMessage(botUrl, msg, m.chat)
 			if err != nil {
 
@@ -349,7 +499,7 @@ func main() {
 			,[nproject]
 			,[message]
 			FROM [zaprosi].[dbo].[perepiska]  where nproject in (SELECT [n_project]
-			FROM [zaprosi].[dbo].[zapr] where napr='ork' and mpp is null ) and id>%d`, startID2)
+			FROM [zaprosi].[dbo].[zapr] where napr='ork' and mpp is null ) and id>%d and kto !='soreshnikov' order by id`, startID2)
 		fmt.Println(query)
 
 		rows, err = db.Query(query)
@@ -367,8 +517,8 @@ func main() {
 
 			fmt.Println(mHead.message)
 
-			msg := fmt.Sprintf("Неназначенный\nНомер запроса: %d \n Отправитель: %s \n Сообщение: \n %s", mHead.nproject, mHead.who, mHead.message)
-			msg = strip.StripTags(msg)
+			msg := fmt.Sprintf("Неназначенный\nНомер запроса: %d\nhttps://spoc?idN=%d \n Отправитель: %s \n Сообщение: \n %s", mHead.nproject, mHead.nproject, mHead.who, mHead.message)
+			msg = cleartags(msg)
 			err := sendMessage(botUrl, msg, 261609763)
 			if err != nil {
 
@@ -398,7 +548,7 @@ func main() {
 
 			now := time.Now()
 
-			count := 1
+			count := 2
 			timeBottom := now.Add(time.Duration(-count) * time.Minute)
 
 			if timeSynh.Before(timeBottom) {
@@ -416,9 +566,7 @@ func main() {
 				}
 			}
 		}
-
 	}
-
 }
 
 func sendMessage(botUrl string, msg string, chatId int) error {
@@ -506,4 +654,18 @@ func sendEmail(komu string, kopiya string, tema string, telopisma string) error 
 		FROM [zaprosi].[dbo].[sendemail]
 	*/
 	return nil
+}
+
+func cleartags(text string) (text1 string) {
+	p := bluemonday.StripTagsPolicy()
+
+	text = strings.Replace(text, "</tr>", "\n", -1)
+	text = strings.Replace(text, "</td>", " ", -1)
+
+	text1 = p.Sanitize(
+		text,
+	)
+
+	return
+
 }
