@@ -15,10 +15,9 @@ import (
 	"strings"
 	"time"
 
-	yaml "gopkg.in/yaml.v3"
-
 	_ "github.com/denisenkom/go-mssqldb"
-	"github.com/microcosm-cc/bluemonday" // => strip
+	strip "github.com/grokify/html-strip-tags-go"
+	yaml "gopkg.in/yaml.v3"
 )
 
 var (
@@ -37,6 +36,8 @@ var (
 	mb           = 45
 	he           = 18
 	me           = 45
+	synhSend     = false
+	tsynh        time.Time
 )
 
 func main() {
@@ -458,15 +459,14 @@ func main() {
 				FROM [zaprosi].[dbo].[profile])
 				SELECT TOP (1000) [perepiska].[id],[shnam],[name],[secnam],[komyt],[kto],[perepiska].[nproject],[message] , ISNULL([naprav],'main') AS naprav,[mainid],
 				(select top 1 zakazchik from [zaprosi].[dbo].[zapr] where zapr.main_id= asd.mainid) as zakaz  , 
-				 (SELECT TOP 1 [otdel] FROM [zaprosi].[dbo].[tgbot] where tgbot.email=komyt) as otdel,
-				 (SELECT TOP 1 [dolzhn] FROM [zaprosi].[dbo].[tgbot] where tgbot.email=komyt) as dolzhn,
+		
 				(select chatid from [zaprosi].[dbo].[tgbot] where email = komyt ) as chat FROM [zaprosi].[dbo].[perepiska] INNER JOIN asd ON [nid] = [id] INNER JOIN [profile] 
 				ON [email] = [komyt] WHERE komyt in (SELECT [email] FROM [zaprosi].[dbo].[tgbot]  where loginned = 1
 				 and active = 1 and ((DATEPART(HOUR, GETDATE())>=hour_begin and DATEPART(HOUR, GETDATE())<=hour_end) or (DATEPART(HOUR, GETDATE())=hour_begin and DATEPART(MINUTE, GETDATE())>=MINUTE_begin))
 				 or (DATEPART(HOUR, GETDATE())=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end))
 				 --and DATEPART(HOUR, GETDATE())<=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end)
 				  and [perepiska].id>%d order by id  `, startID)
-		fmt.Println(query)
+		//fmt.Println(query)
 
 		rows, err = db.Query(query)
 		if err != nil {
@@ -476,7 +476,7 @@ func main() {
 
 		for rows.Next() {
 
-			if err := rows.Scan(&m.id, &m.login, &m.name, &m.secname, &m.whom, &m.who, &m.nproject, &m.message, &m.naprav, &m.mainid, &m.zakazchik, &m.otdel, &m.dolzhn, &m.chat); err != nil {
+			if err := rows.Scan(&m.id, &m.login, &m.name, &m.secname, &m.whom, &m.who, &m.nproject, &m.message, &m.naprav, &m.mainid, &m.zakazchik, &m.chat); err != nil {
 				log.Panic(err)
 				fmt.Scanf(" ")
 			}
@@ -485,6 +485,7 @@ func main() {
 
 			msg := fmt.Sprintf("Номер запроса: %d\nЗаказчик:%s\nhttps://spoc?idN=%d \nОтправитель: %s \n\nСообщение: \n %s", m.nproject, m.zakazchik, m.nproject, m.who, m.message)
 			msg = cleartags(msg)
+			fmt.Println(msg)
 			err := sendMessage(botUrl, msg, m.chat)
 			if err != nil {
 
@@ -499,8 +500,8 @@ func main() {
 			,[nproject]
 			,[message]
 			FROM [zaprosi].[dbo].[perepiska]  where nproject in (SELECT [n_project]
-			FROM [zaprosi].[dbo].[zapr] where napr='ork' and mpp is null ) and id>%d and kto !='soreshnikov' order by id`, startID2)
-		fmt.Println(query)
+			FROM [zaprosi].[dbo].[zapr] where napr='ork' and mpp is null ) and id>%d order by id`, startID2)
+		fmt.Println(startID2)
 
 		rows, err = db.Query(query)
 		if err != nil {
@@ -515,10 +516,9 @@ func main() {
 				fmt.Scanf(" ")
 			}
 
-			fmt.Println(mHead.message)
-
 			msg := fmt.Sprintf("Неназначенный\nНомер запроса: %d\nhttps://spoc?idN=%d \n Отправитель: %s \n Сообщение: \n %s", mHead.nproject, mHead.nproject, mHead.who, mHead.message)
 			msg = cleartags(msg)
+			fmt.Println(msg)
 			err := sendMessage(botUrl, msg, 261609763)
 			if err != nil {
 
@@ -529,7 +529,7 @@ func main() {
 		}
 
 		query = `SELECT [obn] FROM [zaprosi].[dbo].[obnov] where id = 1`
-		fmt.Println(query)
+		//fmt.Println(query)
 
 		rows, err = db.Query(query)
 		if err != nil {
@@ -543,15 +543,24 @@ func main() {
 				log.Panic(err)
 				fmt.Scanf(" ")
 			}
+		}
 
-			fmt.Println(timeSynh)
+		if synhSend && tsynh != timeSynh {
 
-			now := time.Now()
+			synhSend = false
 
-			count := 2
-			timeBottom := now.Add(time.Duration(-count) * time.Minute)
-
-			if timeSynh.Before(timeBottom) {
+		}
+		fmt.Println(timeSynh)
+		now := time.Now()
+		countm := 1
+		counth := 3
+		timeBottom := now.Add(time.Duration(-countm) * time.Minute)
+		timeBottom = timeBottom.Add(time.Duration(counth) * time.Hour)
+		fmt.Println("tymeSynh: ", timeSynh)
+		fmt.Println("tymeBottom: ", timeBottom)
+		fmt.Println("synhDropped: ", timeSynh.Before(timeBottom))
+		if timeSynh.Before(timeBottom) {
+			if !synhSend {
 				err := sendMessage(botUrl, "Ошибка синхронизации", 261609763)
 				if err != nil {
 
@@ -564,8 +573,12 @@ func main() {
 					log.Panic(err)
 
 				}
+				synhSend = true
+				tsynh = timeSynh
 			}
+
 		}
+
 	}
 }
 
@@ -657,15 +670,28 @@ func sendEmail(komu string, kopiya string, tema string, telopisma string) error 
 }
 
 func cleartags(text string) (text1 string) {
-	p := bluemonday.StripTagsPolicy()
 
-	text = strings.Replace(text, "</tr>", "\n", -1)
-	text = strings.Replace(text, "</td>", " ", -1)
-
-	text1 = p.Sanitize(
-		text,
-	)
-
+	text = strings.Replace(text, "</tr>", "</tr>\n", -1)
+	text = strings.Replace(text, "</td>", "</td> ", -1)
+	text = strings.Replace(text, "&nbsp;", " ", -1)
+	text = strings.Replace(text, "&gt;", " ", -1)
+	text = strings.Replace(text, "&#34;", " ", -1)
+	text1 = strip.StripTags(text)
 	return
 
+}
+
+func Difference(a, b []int) (diff []int) {
+	m := make(map[int]bool)
+
+	for _, item := range b {
+		m[item] = true
+	}
+
+	for _, item := range a {
+		if _, ok := m[item]; !ok {
+			diff = append(diff, item)
+		}
+	}
+	return
 }

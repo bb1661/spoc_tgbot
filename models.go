@@ -35,8 +35,6 @@ type BaseMsg struct {
 	naprav    string
 	mainid    string
 	zakazchik string
-	otdel     string
-	dolzhn    string
 	chat      int
 	hb        int
 	he        int
