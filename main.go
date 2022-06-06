@@ -32,15 +32,15 @@ var (
 	userex       userExists
 	emailProfile int
 	chatPatch    int
-	hb           = 9
-	mb           = 45
-	he           = 18
-	me           = 45
 	synhSend     = false
 	tsynh        time.Time
+	mod          int
+	cycle        time.Duration
 )
 
 func main() {
+	fmt.Println(`Set timeot cycle (seconds):`)
+	fmt.Scanf("%d", &cycle)
 
 	textfile, err := ioutil.ReadFile("config.yml")
 	if err != nil {
@@ -71,8 +71,49 @@ func main() {
 	}
 
 	for {
+
+		now1 := time.Now()
+		fmt.Println(now1)
+		//ping tgbotapi
+		_, err = getUpdates(botUrl, offset)
+		if err != nil {
+			errapi := true
+			for errapi {
+				timerApi := time.NewTimer(time.Second * 10)
+				<-timerApi.C
+				_, err = getUpdates(botUrl, offset)
+				if err == nil {
+					errapi = false
+				}
+				fmt.Println("Error ping tgbotapi")
+				fmt.Scanf(" ")
+			}
+			fmt.Println("reconnected to tgbotapi")
+		} else {
+			fmt.Println("tgbotapi connection ok")
+		}
+
+		//ping db
+		err = db.Ping()
+		if err != nil {
+			_ = sendMessage(botUrl, "Error ping db", 261609763)
+			errdb := true
+			for errdb {
+				timerdb := time.NewTimer(time.Second * 10)
+				<-timerdb.C
+				err = db.Ping()
+				if err == nil {
+					errdb = false
+				}
+				fmt.Println("Error ping db")
+				fmt.Scanf(" ")
+			}
+			fmt.Println("reconnected to db")
+		} else {
+			fmt.Println("db connection ok")
+		}
+
 		query = "SELECT top 1 id FROM [zaprosi].[dbo].[perepiska] order by id desc"
-		fmt.Println(query)
 
 		rows, err := db.Query(query)
 		if err != nil {
@@ -90,14 +131,13 @@ func main() {
 			}
 		}
 		startID2 := startID
-		timer := time.NewTimer(time.Second * 1)
+
+		timer := time.NewTimer(time.Second * cycle)
+
 		<-timer.C
 
 		updates, err := getUpdates(botUrl, offset)
 
-		if err != nil {
-			log.Println("err: ", err.Error())
-		}
 		for _, update := range updates {
 
 			query = fmt.Sprintf("SELECT CASE WHEN EXISTS (SELECT TOP (1) 1 FROM [zaprosi].[dbo].[tgbot] WHERE [chatid] = %d) THEN '1'ELSE '0' END", update.Message.Chat.ChatId)
@@ -183,11 +223,12 @@ func main() {
 							log.Fatal(err)
 							fmt.Scanf("")
 						}
-						err = sendMessage(botUrl, "Оповещение отправлено", update.Message.Chat.ChatId)
-						if err != nil {
-							log.Fatal(err)
-							fmt.Scanf("")
-						}
+
+					}
+					err = sendMessage(botUrl, "Оповещение отправлено", update.Message.Chat.ChatId)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
 					}
 				} else {
 					logged = 0
@@ -288,6 +329,8 @@ func main() {
 					Включить - включить оповещения
 					Начало - Установить время начала отправки оповещения. По умолчанию 9.45. Пример команды: "Начало 8.30"
 					Конец - Установить время начала отправки оповещения. По умолчанию 18.45. Пример команды: "Конец  21.15"
+
+					Если у тебя возникла какая-то проблема со мной, или же хочется предлжить что-то для доработки - обращайся к soreshnikov@dtln.ru/ https://t.me/soreshnikov
 					`, update.Message.Chat.ChatId)
 					if err != nil {
 						log.Fatal(err)
@@ -311,7 +354,7 @@ func main() {
 					Начало - Установить время начала отправки оповещения. По умолчанию 9.45. Пример команды: "Начало 8.30"
 					Конец - Установить время начала отправки оповещения. По умолчанию 18.45. Пример команды: "Конец  21.15"
 
-					Если у тебя возникла какая-то проблема со мной, или же хочется предлжить что-то для доработки - обращайся к soreshnikov@dtln.ru/ @ro_anae`, update.Message.Chat.ChatId)
+					Если у тебя возникла какая-то проблема со мной, или же хочется предлжить что-то для доработки - обращайся к soreshnikov@dtln.ru/ https://t.me/soreshnikov`, update.Message.Chat.ChatId)
 					if err != nil {
 						log.Fatal(err)
 						fmt.Scanf("")
@@ -435,7 +478,8 @@ func main() {
 					}
 
 				default:
-					err = sendMessage(botUrl, "Вы не зарегистрированы. Введите свой корпоративный email.", update.Message.Chat.ChatId)
+					err = sendMessage(botUrl, `Вы не зарегистрированы. Введите свой корпоративный email. 
+					Если у тебя возникла какая-то проблема со мной - обращайся к soreshnikov@dtln.ru/ https://t.me/soreshnikov`, update.Message.Chat.ChatId)
 					if err != nil {
 						log.Fatal(err)
 						fmt.Scanf("")
@@ -550,15 +594,12 @@ func main() {
 			synhSend = false
 
 		}
-		fmt.Println(timeSynh)
 		now := time.Now()
 		countm := 1
 		counth := 3
 		timeBottom := now.Add(time.Duration(-countm) * time.Minute)
 		timeBottom = timeBottom.Add(time.Duration(counth) * time.Hour)
-		fmt.Println("tymeSynh: ", timeSynh)
-		fmt.Println("tymeBottom: ", timeBottom)
-		fmt.Println("synhDropped: ", timeSynh.Before(timeBottom))
+
 		if timeSynh.Before(timeBottom) {
 			if !synhSend {
 				err := sendMessage(botUrl, "Ошибка синхронизации", 261609763)
@@ -578,7 +619,7 @@ func main() {
 			}
 
 		}
-
+		fmt.Println("")
 	}
 }
 
