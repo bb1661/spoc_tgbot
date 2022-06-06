@@ -34,8 +34,8 @@ var (
 	chatPatch    int
 	synhSend     = false
 	tsynh        time.Time
-	mod          int
 	cycle        time.Duration
+	db           *sql.DB
 )
 
 func main() {
@@ -69,9 +69,9 @@ func main() {
 		fmt.Println("Error ping")
 		fmt.Scanf(" ")
 	}
-
+	k := 1
 	for {
-
+		k++
 		now1 := time.Now()
 		fmt.Println(now1)
 		//ping tgbotapi
@@ -106,7 +106,7 @@ func main() {
 					errdb = false
 				}
 				fmt.Println("Error ping db")
-				fmt.Scanf(" ")
+
 			}
 			fmt.Println("reconnected to db")
 		} else {
@@ -117,9 +117,11 @@ func main() {
 
 		rows, err := db.Query(query)
 		if err != nil {
-			log.Fatal(err)
-			fmt.Scanf("")
+			log.Panic(err)
+			fmt.Scanf(" ")
+
 		}
+
 		if rows != nil {
 			for rows.Next() {
 				//fmt.Println("nexter")
