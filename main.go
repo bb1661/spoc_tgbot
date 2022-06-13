@@ -246,6 +246,82 @@ func main() {
 						log.Fatal(err)
 						fmt.Scanf("")
 					}
+				case update.Message.Reply_to_message.Text != "":
+					res1 := strings.Index(update.Message.Reply_to_message.Text, "Номер запроса:  ")
+					fmt.Println("Result 1: ", res1)
+					npr := ""
+					k := res1 + 12 + 28
+					for i := res1 + 28; i < k; i++ {
+
+						npr = npr + string(update.Message.Reply_to_message.Text[i])
+					}
+					zapr := fmt.Sprintf(`with collective AS (
+
+							SELECT
+							
+							STRING_AGG(profile.[shnam], '|w|') AS group_komu
+							
+					
+							
+							,n_project
+							
+							FROM mp_zapr
+							
+							inner join profile ON profile.shnam = mp_zapr.[shnam]
+							
+							GROUP BY  n_project
+							
+							),
+							
+							promej as (
+							
+							select top 1 [tgbot].[email],'%s' as vrem_proj ,shnam
+							
+							from [zaprosi].[dbo].[tgbot]
+							
+							INNER JOIN profile on profile.[email] = [tgbot].[email]
+							
+							where chatid=%d
+							
+							)
+							
+							INSERT INTO [dbo].[perepiska]
+							
+							([datesend]
+							
+							,[komu]
+							
+							,[kto]
+							
+							,[nproject]
+							
+							,[message]
+							
+							,[naprav])
+							
+							SELECT GETDATE()
+							
+							, REPLACE(REPLACE(group_komu,promej.email + '|w|',''), promej.shnam + '|w|', '')
+							
+							, promej.[email]
+							
+							,'%s'
+							
+							,N'%s'
+							
+							,'main'
+							
+							FROM collective
+							
+							LEFT JOIN promej ON vrem_proj = n_project
+							
+							WHERE n_project = '%s'`, npr, update.Message.Chat.ChatId, npr, update.Message.Text, npr)
+
+					_, err = db.Exec(zapr)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
 
 				case (strings.HasPrefix(update.Message.Text, "Начало") || strings.HasPrefix(update.Message.Text, "начало")):
 					re := regexp.MustCompile("[0-9]+")
@@ -313,6 +389,7 @@ func main() {
 						log.Fatal(err)
 						fmt.Scanf("")
 					}
+
 				case (strings.HasPrefix(update.Message.Text, "Выключить") || strings.HasPrefix(update.Message.Text, "выключить")):
 					zapr := fmt.Sprintf("update [dbo].[tgbot] set active = 0  where chatid=%d", update.Message.Chat.ChatId)
 					_, err = db.Exec(zapr)
@@ -325,6 +402,7 @@ func main() {
 						log.Fatal(err)
 						fmt.Scanf("")
 					}
+
 				default:
 					err = sendMessage(botUrl, `Доступные на данный момент команды:
 					Выключить - отключить оповещения
@@ -498,20 +576,127 @@ func main() {
 		}
 		fmt.Println(updates)
 
-		query = fmt.Sprintf(`With asd AS(SELECT [komyt],[datewhen],[nid],[mainid],[nproject],[valid]
-				FROM [zaprosi].[dbo].[komy_table])
-				,prichit AS (SELECT [dateprochit],[whoClick],[idN],[nproj] FROM [zaprosi].[dbo].[prochit_table]),
-				usery AS (SELECT [shnam],[name],[secnam],[about],[phone],[email],[pozic],[dolzn],[pic],[groupa],[uwelSotr]
-				FROM [zaprosi].[dbo].[profile])
-				SELECT TOP (1000) [perepiska].[id],[shnam],[name],[secnam],[komyt],[kto],[perepiska].[nproject],[message] , ISNULL([naprav],'main') AS naprav,[mainid],
-				(select top 1 zakazchik from [zaprosi].[dbo].[zapr] where zapr.main_id= asd.mainid) as zakaz  , 
+		query = fmt.Sprintf(`With table_whom
+
+		AS
 		
-				(select chatid from [zaprosi].[dbo].[tgbot] where email = komyt ) as chat FROM [zaprosi].[dbo].[perepiska] INNER JOIN asd ON [nid] = [id] INNER JOIN [profile] 
-				ON [email] = [komyt] WHERE komyt in (SELECT [email] FROM [zaprosi].[dbo].[tgbot]  where loginned = 1
-				 and active = 1 and ((DATEPART(HOUR, GETDATE())>=hour_begin and DATEPART(HOUR, GETDATE())<=hour_end) or (DATEPART(HOUR, GETDATE())=hour_begin and DATEPART(MINUTE, GETDATE())>=MINUTE_begin))
-				 or (DATEPART(HOUR, GETDATE())=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end))
-				 --and DATEPART(HOUR, GETDATE())<=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end)
-				  and [perepiska].id>%d order by id  `, startID)
+		(SELECT
+		
+		[komyt],
+		
+		MAX([datewhen]) as [datewhen],
+		
+		[nid],
+		
+		[mainid],
+		
+		[nproject],
+		
+		[valid],
+		
+		MAX([Zakazchik]) AS [Zakazchik],
+		
+		MIN([NameProject]) as namePr
+		
+		FROM [zaprosi].[dbo].[komy_table]
+		
+		INNER JOIN [zaprosi].[dbo].[zapr] on [zapr].[main_id] = [komy_table].mainid
+		
+		GROUP BY [komyt],
+		
+		[nid],
+		
+		[mainid],
+		
+		[nproject],
+		
+		[valid]
+		
+		),
+		
+		usery AS
+		
+		(
+		
+		SELECT
+		
+		[shnam],
+		
+		[name] + ' ' + [secnam] AS nameUser ,
+		
+		email
+		
+		FROM
+		
+		[zaprosi].[dbo].[profile]
+		
+		),
+		
+		chat_id AS (
+		
+		SELECT chatid, email from [zaprosi].[dbo].[tgbot]
+		
+		where loginned = 1 and active = 1
+		
+		and ((DATEPART(HOUR, GETDATE())>=hour_begin and DATEPART(HOUR, GETDATE())<=hour_end)
+		
+		or (DATEPART(HOUR, GETDATE())=hour_begin and DATEPART(MINUTE, GETDATE())>=MINUTE_begin))
+		
+		or (DATEPART(HOUR, GETDATE())=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end)
+		
+		),
+		
+		zapros_npr AS (
+		
+		SELECT  main_id
+		
+		FROM zapr
+		
+		GROUP BY main_id
+		
+		)
+		
+		SELECT  [perepiska].[id],
+		
+		pr_file.[shnam]
+		
+		, usery.nameUser
+		
+		,[komyt]
+		
+		,(pr_file.[name] + ' ' + pr_file.[secnam]) as kto
+		
+		,' ' + [perepiska].[nproject] as nproject
+		
+		,[message]
+		
+		, ISNULL([naprav],'main') AS naprav
+		
+		,[mainid]
+		
+		,[Zakazchik] as zakaz 
+		
+		,chatid as chat
+		
+		,namePr AS [NameProject]
+		
+		FROM [zaprosi].[dbo].[perepiska]
+		
+		INNER JOIN table_whom ON [nid] = [id]
+		
+		INNER JOIN usery ON usery.[email] = [komyt]
+		
+		INNER JOIN chat_id ON komyt = chat_id.email
+		
+		INNER JOIN profile as pr_file ON pr_file.shnam = [kto]
+		
+		WHERE
+		
+		--and DATEPART(HOUR, GETDATE())<=hour_end and DATEPART(MINUTE, GETDATE())<=MINUTE_end)
+		
+		[perepiska].id> %d
+		
+		order by [perepiska].id `, startID)
 		//fmt.Println(query)
 
 		rows, err = db.Query(query)
@@ -522,14 +707,14 @@ func main() {
 
 		for rows.Next() {
 
-			if err := rows.Scan(&m.id, &m.login, &m.name, &m.secname, &m.whom, &m.who, &m.nproject, &m.message, &m.naprav, &m.mainid, &m.zakazchik, &m.chat); err != nil {
+			if err := rows.Scan(&m.id, &m.login, &m.fullNameWhom, &m.whom, &m.who, &m.nproject, &m.message, &m.naprav, &m.mainid, &m.zakazchik, &m.chat, &m.description); err != nil {
 				log.Panic(err)
 				fmt.Scanf(" ")
 			}
 
 			fmt.Println(m.message)
 
-			msg := fmt.Sprintf("Номер запроса: %d\nЗаказчик:%s\nhttps://spoc?idN=%d \nОтправитель: %s \n\nСообщение: \n %s", m.nproject, m.zakazchik, m.nproject, m.who, m.message)
+			msg := fmt.Sprintf("%s\n %s\nНомер запроса: %s \nОтправитель: %s \n\nСообщение: \n %s", m.zakazchik, m.description, m.nproject, m.who, m.message)
 			msg = cleartags(msg)
 			fmt.Println(msg)
 			err := sendMessage(botUrl, msg, m.chat)
@@ -562,7 +747,7 @@ func main() {
 				fmt.Scanf(" ")
 			}
 
-			msg := fmt.Sprintf("Неназначенный\nНомер запроса: %d\nhttps://spoc?idN=%d \n Отправитель: %s \n Сообщение: \n %s", mHead.nproject, mHead.nproject, mHead.who, mHead.message)
+			msg := fmt.Sprintf("Неназначенный\nНомер запроса: %s\n Отправитель: %s \n Сообщение: \n %s", mHead.nproject, mHead.who, mHead.message)
 			msg = cleartags(msg)
 			fmt.Println(msg)
 			err := sendMessage(botUrl, msg, 261609763)
@@ -597,7 +782,7 @@ func main() {
 
 		}
 		now := time.Now()
-		countm := 1
+		countm := 2
 		counth := 3
 		timeBottom := now.Add(time.Duration(-countm) * time.Minute)
 		timeBottom = timeBottom.Add(time.Duration(counth) * time.Hour)

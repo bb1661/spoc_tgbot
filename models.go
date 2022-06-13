@@ -6,7 +6,12 @@ type Update struct {
 }
 
 type Message struct {
-	Chat Chat   `json:"chat"`
+	Chat             Chat   `json:"chat"`
+	Text             string `json:"text"`
+	Reply_to_message MessageReplied
+}
+
+type MessageReplied struct {
 	Text string `json:"text"`
 }
 
@@ -24,28 +29,24 @@ type BotMessage struct {
 }
 
 type BaseMsg struct {
-	id        int
-	login     string
-	name      string
-	secname   string
-	whom      string
-	who       string
-	nproject  int
-	message   string
-	naprav    string
-	mainid    string
-	zakazchik string
-	chat      int
-	hb        int
-	he        int
-	mb        int
-	me        int
+	id           int
+	login        string
+	description  string
+	whom         string
+	who          string
+	nproject     string
+	message      string
+	naprav       string
+	mainid       string
+	zakazchik    string
+	chat         int
+	fullNameWhom string
 }
 
 type BaseMsg2 struct {
 	id       int
 	who      string
-	nproject int
+	nproject string
 	message  string
 }
 
