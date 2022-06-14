@@ -36,6 +36,8 @@ var (
 	tsynh        time.Time
 	cycle        time.Duration
 	db           *sql.DB
+	nid          int
+	emailSend    string
 )
 
 func main() {
@@ -247,6 +249,7 @@ func main() {
 						fmt.Scanf("")
 					}
 				case update.Message.Reply_to_message.Text != "":
+
 					res1 := strings.Index(update.Message.Reply_to_message.Text, "Номер запроса:  ")
 					fmt.Println("Result 1: ", res1)
 					npr := ""
@@ -256,71 +259,125 @@ func main() {
 						npr = npr + string(update.Message.Reply_to_message.Text[i])
 					}
 					zapr := fmt.Sprintf(`with collective AS (
+						SELECT
+						
+						STRING_AGG(profile.email, '|w|') AS group_komu
+						
+				
+						
+						,n_project
+						
+						FROM mp_zapr
+						
+						inner join profile ON profile.shnam = mp_zapr.[shnam]
+						
+						GROUP BY  n_project
+						
+						),
+						
+						promej as (
+						
+						select top 1 [tgbot].[email],'%s' as vrem_proj ,shnam
+						
+						from [zaprosi].[dbo].[tgbot]
+						
+						INNER JOIN profile on profile.[email] = [tgbot].[email]
+						
+						where chatid=%d
+						
+						)
+						
+						INSERT INTO [dbo].[perepiska]
+						
+						([datesend]
+						
+						,[komu]
+						
+						,[kto]
+						
+						,[nproject]
+						
+						,[message]
+						
+						,[naprav])
+						
+						OUTPUT Inserted.ID
+						SELECT GETDATE()
+						
+						, replace(REPLACE(REPLACE(group_komu,promej.email + '|w|',''), promej.shnam + '|w|', ''),promej.email,'')
+						
+						, promej.shnam
+						
+						,'%s'
+						
+						,N'%s'
+						
+						,'main'
+						
+						FROM collective
+						
+						LEFT JOIN promej ON vrem_proj = n_project
+						
+						WHERE n_project = '%s'`, npr, update.Message.Chat.ChatId, npr, update.Message.Text, npr)
 
-							SELECT
-							
-							STRING_AGG(profile.[shnam], '|w|') AS group_komu
-							
-					
-							
-							,n_project
-							
-							FROM mp_zapr
-							
-							inner join profile ON profile.shnam = mp_zapr.[shnam]
-							
-							GROUP BY  n_project
-							
-							),
-							
-							promej as (
-							
-							select top 1 [tgbot].[email],'%s' as vrem_proj ,shnam
-							
-							from [zaprosi].[dbo].[tgbot]
-							
-							INNER JOIN profile on profile.[email] = [tgbot].[email]
-							
-							where chatid=%d
-							
-							)
-							
-							INSERT INTO [dbo].[perepiska]
-							
-							([datesend]
-							
-							,[komu]
-							
-							,[kto]
-							
-							,[nproject]
-							
-							,[message]
-							
-							,[naprav])
-							
-							SELECT GETDATE()
-							
-							, REPLACE(REPLACE(group_komu,promej.email + '|w|',''), promej.shnam + '|w|', '')
-							
-							, promej.[email]
-							
-							,'%s'
-							
-							,N'%s'
-							
-							,'main'
-							
-							FROM collective
-							
-							LEFT JOIN promej ON vrem_proj = n_project
-							
-							WHERE n_project = '%s'`, npr, update.Message.Chat.ChatId, npr, update.Message.Text, npr)
-
-					_, err = db.Exec(zapr)
+					rows, err := db.Query(zapr)
 					if err != nil {
 						log.Fatal(err)
 						fmt.Scanf("")
+					}
+					if rows != nil {
+						for rows.Next() {
+							//fmt.Println("nexter")
+
+							if err := rows.Scan(&nid); err != nil {
+								log.Panic(err)
+								fmt.Scanf(" ")
+							}
+						}
+					}
+
+					zapr = fmt.Sprintf(`SELECT
+					profile.email 
+					FROM mp_zapr		
+					inner join profile ON profile.shnam = mp_zapr.[shnam]
+					where n_project='%s'`, npr)
+
+					rows, err = db.Query(zapr)
+					if err != nil {
+						log.Fatal(err)
+						fmt.Scanf("")
+					}
+					if rows != nil {
+						for rows.Next() {
+							//fmt.Println("nexter")
+
+							if err := rows.Scan(&emailSend); err != nil {
+								log.Panic(err)
+								fmt.Scanf(" ")
+							}
+
+							zapr = fmt.Sprintf(`INSERT INTO [dbo].[komy_table]
+										([komyt]
+										,[datewhen]
+										,[nid]
+										,[mainid]
+										,[nproject]
+										,[valid])
+								VALUES
+										('%s'
+										,GETDATE()
+										,%d
+										,(select main_id from zapr where n_project='%s')
+										,'%s'
+										,0)`, emailSend, nid, npr, npr)
+
+							_, err = db.Exec(zapr)
+							if err != nil {
+								log.Fatal(err)
+								fmt.Scanf("")
+							}
+
+						}
 					}
 
 				case (strings.HasPrefix(update.Message.Text, "Начало") || strings.HasPrefix(update.Message.Text, "начало")):
